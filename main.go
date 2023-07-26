@@ -1,10 +1,34 @@
 package main
 
 import (
-	"github.com/gorilla/mux"
-	"github.com/gorilla/websocket"
+	"database/sql"
+	"encoding/json"
+	"fmt"
 	"net/http"
+
+	"github.com/gorilla/mux"
+	"golang.org/x/crypto/bcrypt"
+	_ "github.com/lib/pq" // PostgreSQL driver
 )
+
+type User struct {
+	Username string `json:"username"`
+	Password string `json:"password"`
+}
+
+var db *sql.DB
+
+func init() {
+	var err error
+	db, err = sql.Open("postgres", "DB_CONNECTION_STRING")
+	if err != nil {
+		panic(err)
+	}
+
+	if err = db.Ping(); err != nil {
+		panic(err)
+	}
+}
 
 var clients = make(map[*websocket.Conn]bool)
 var broadcast = make(chan Message)
