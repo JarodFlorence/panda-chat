@@ -54,7 +54,28 @@ func main() {
 }
 
 func registerHandler(w http.ResponseWriter, r *http.Request) {
-	// Handle registration
+	var user User
+	err := json.NewDecoder(r.Body).Decode(&user)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(user.Password), bcrypt.DefaultCost)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	sqlStatement := `INSERT INTO users (username, password) VALUES ($1, $2)`
+	_, err = db.Exec(sqlStatement, user.Username, string(hashedPassword))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	fmt.Fprintf(w, "User %s created successfully", user.Username)
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
