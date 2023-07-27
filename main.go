@@ -126,7 +126,48 @@ func loginHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func messageHandler(w http.ResponseWriter, r *http.Request) {
-	// Handle sending of messages
+	c, err := r.Cookie("token")
+	if err != nil {
+		if err == http.ErrNoCookie {
+			http.Error(w, "Not authorized", http.StatusUnauthorized)
+			return
+		}
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	tknStr := c.Value
+
+	claims := &jwt.StandardClaims{}
+
+	tkn, err := jwt.ParseWithClaims(tknStr, claims, func(token *jwt.Token) (interface{}, error) {
+		return jwtKey, nil
+	})
+	if !tkn.Valid {
+		http.Error(w, "Not authorized", http.StatusUnauthorized)
+		return
+	}
+	if err != nil {
+		http.Error(w, "Not authorized", http.StatusUnauthorized)
+		return
+	}
+
+	var msg Message
+	err = json.NewDecoder(r.Body).Decode(&msg)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	sqlStatement := `INSERT INTO messages (username, message) VALUES ($1, $2)`
+	_, err = db.Exec(sqlStatement, claims.Subject, msg.Message)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusCreated)
+	fmt.Fprintf(w, "Message sent successfully")
 }
 
 func handleConnections(w http.ResponseWriter, r *http.Request) {
