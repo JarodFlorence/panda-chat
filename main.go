@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"time"
 
 	"github.com/gorilla/mux"
+	"github.com/dgrijalva/jwt-go"
 	"golang.org/x/crypto/bcrypt"
 	_ "github.com/lib/pq" // PostgreSQL driver
 )
@@ -17,6 +19,7 @@ type User struct {
 }
 
 var db *sql.DB
+var jwtKey = []byte("my_secret_key") // This should be more secure and stored in a secure manner
 
 func init() {
 	var err error
@@ -79,7 +82,47 @@ func registerHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func loginHandler(w http.ResponseWriter, r *http.Request) {
-	// Handle login and JWT creation
+	var user User
+	err := json.NewDecoder(r.Body).Decode(&user)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var dbPassword string
+	err = db.QueryRow("SELECT password FROM users WHERE username=$1", user.Username).Scan(&dbPassword)
+	if err != nil {
+		http.Error(w, "User does not exist", http.StatusUnauthorized)
+		return
+	}
+
+	err = bcrypt.CompareHashAndPassword([]byte(dbPassword), []byte(user.Password))
+	if err != nil {
+		http.Error(w, "Invalid password", http.StatusUnauthorized)
+		return
+	}
+
+	expirationTime := time.Now().Add(5 * time.Minute)
+	claims := &jwt.StandardClaims{
+		Subject:   user.Username,
+		ExpiresAt: expirationTime.Unix(),
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
+	tokenString, err := token.SignedString(jwtKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	http.SetCookie(w, &http.Cookie{
+		Name:    "token",
+		Value:   tokenString,
+		Expires: expirationTime,
+	})
+
+	w.WriteHeader(http.StatusOK)
+	fmt.Fprintf(w, "User %s logged in successfully", user.Username)
 }
 
 func messageHandler(w http.ResponseWriter, r *http.Request) {
